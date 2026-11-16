@@ -329,14 +329,27 @@ input[type='range'] { accent-color: var(--accent); width: 165px; margin-left: au
 .window-strip .icon-button { width:30px; height:30px; }
 .mac-desktop .window-strip { padding-right:18px; }
 .statusbar .sidebar-toggle:disabled { pointer-events:none; cursor:default; }
-.windows-desktop .topbar { padding-right:0; user-select:none; }
-.window-controls { display:flex; flex-shrink:0; height:var(--header-height); margin-left:8px; }
-.window-controls button { display:flex; align-items:center; justify-content:center; width:44px; padding:0; background:transparent; border:0; border-radius:0; color:var(--text); cursor:default; }
-.window-controls button:hover { background:var(--hover); }
-.window-controls button:active { background:var(--selected); }
-.window-controls .window-close:hover, .window-controls .window-close:active { color:white; background:#c42b1c; }
-.window-controls button:focus-visible { outline:2px solid var(--accent); outline-offset:-3px; }
-.window-strip .window-controls { height:32px; }
+/* Windows caption buttons are pinned to the window's top-right corner at app level,
+   so panels (AI assistant, outline) never displace them. The topbar/strip reserve
+   room for them only while the AI panel is closed; when it is open, its top inset
+   band becomes the titlebar zone underneath the corner controls. */
+.windows-desktop .topbar { padding-right:140px; user-select:none; }
+.windows-desktop .window-strip { padding-right:140px; }
+.windows-desktop.ai-open .topbar { padding-right:18px; }
+.windows-desktop.ai-open .window-strip { padding-right:10px; }
+.window-corner { position:absolute; top:0; right:0; z-index:45; height:var(--header-height); display:flex; align-items:center; padding-right:10px; user-select:none; }
+.window-corner.compact { height:32px; }
+/* Caption buttons borrow the toolbar's quiet rounded hover language instead of raw full-height slabs. */
+.window-controls { display:flex; align-items:center; gap:2px; flex-shrink:0; align-self:center; margin-left:5px; padding-left:9px; border-left:1px solid var(--line); }
+.window-controls button { display:flex; align-items:center; justify-content:center; width:34px; height:30px; padding:0; background:transparent; border:0; border-radius:6px; color:var(--muted); cursor:default; }
+.window-controls button:hover { background:var(--hover); color:var(--text); }
+.window-controls button:active { background:var(--selected); color:var(--text); }
+.window-controls .window-close:hover { color:white; background:#c42b1c; }
+.window-controls .window-close:active { color:white; background:#a92416; }
+.window-controls button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.window-corner.compact .window-controls button { width:32px; height:26px; }
+/* Floating over the AI panel's titlebar band there is nothing to separate from. */
+.ai-open .window-corner .window-controls { margin-left:0; padding-left:0; border-left:0; }
 @media (max-width:900px) {
   .mac-desktop .topbar-left { gap:3px; }
   .mac-desktop .app-menu-bar > button { padding:0 7px; }
@@ -418,8 +431,6 @@ input[type='checkbox'] { accent-color:var(--accent); }
   .app-menu-bar > button { padding:0 5px; }
   .topbar-left, .topbar-actions { gap:0; }
   .topbar .icon-button { width:26px; }
-  .topbar .window-controls { margin-left:0; }
-  .topbar .window-controls button { width:32px; }
   .statusbar { padding:0 10px; }
   .statusbar > div { gap:5px; }
 }

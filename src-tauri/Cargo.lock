@@ -519,6 +519,9 @@ version = "0.1.10"
 dependencies = [
  "core-foundation 0.10.1",
  "keyring",
+ "serde",
+ "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -527,6 +530,7 @@ dependencies = [
  "tauri-plugin-http",
  "tauri-plugin-persisted-scope",
  "tauri-plugin-single-instance",
+ "windows-sys 0.61.2",
  "winreg 0.55.0",
 ]
 

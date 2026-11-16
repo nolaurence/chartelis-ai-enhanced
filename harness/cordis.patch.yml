@@ -1,0 +1,10 @@
+- id: ui-theme
+  config:
+    preference: light
+    fontSize: 14
+- id: locale
+  config:
+    preference: !!js process.env.CHARTELIS_LANGUAGE === 'en' ? 'en' : 'zh'
+- insert:
+    - id: chartelis-workspace
+      name: ./chartelis-plugin.mjs

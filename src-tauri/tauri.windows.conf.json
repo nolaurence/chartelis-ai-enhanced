@@ -16,5 +16,8 @@
         "dragDropEnabled": false
       }
     ]
+  },
+  "bundle": {
+    "resources": { "../.tools/dsh/": "dsh/" }
   }
 }

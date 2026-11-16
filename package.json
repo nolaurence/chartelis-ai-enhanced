@@ -10,7 +10,9 @@
     "tauri": "node scripts/desktop.mjs",
     "desktop": "node scripts/desktop.mjs dev",
     "desktop:build": "node scripts/desktop.mjs build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:harness": "node --test harness/workspace.node-test.mjs",
+    "test:harness:runtime": "node scripts/prepare-harness.mjs && node scripts/smoke-harness.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

@@ -1,6 +1,7 @@
 mod association;
 mod language;
 mod ai_credentials;
+mod harness;
 
 use std::{path::{Path, PathBuf}, sync::Mutex};
 use tauri::{Emitter, Manager};
@@ -44,6 +45,7 @@ fn take_pending_files(state: tauri::State<PendingFiles>) -> Vec<String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(PendingFiles::default())
+        .manage(harness::HarnessState::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             queue_files(app, args.into_iter().skip(1).filter(|arg| !arg.starts_with('-')).map(|arg| {
                 let path = PathBuf::from(arg);
@@ -55,7 +57,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .invoke_handler(tauri::generate_handler![take_pending_files, association::is_default_markdown_app, association::configure_markdown_default, language::installation_language, ai_credentials::ai_get_key, ai_credentials::ai_set_key, ai_credentials::ai_delete_key])
+        .invoke_handler({
+            let commands: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![take_pending_files, association::is_default_markdown_app, association::configure_markdown_default, language::installation_language, ai_credentials::ai_get_key, ai_credentials::ai_set_key, ai_credentials::ai_delete_key, harness::harness_start, harness::harness_stop, harness::harness_alive, harness::harness_view, harness::harness_action];
+            move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
+                // App commands need their own fence in addition to plugin capabilities.
+                if invoke.message.webview_ref().label() != "main" {
+                    invoke.resolver.reject("Only the editor can invoke application commands");
+                    return true;
+                }
+                commands(invoke)
+            }
+        })
         .setup(|app| {
             queue_files(app.handle(), std::env::args_os().skip(1).map(PathBuf::from));
             Ok(())
@@ -63,6 +75,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Chartelis could not start")
         .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) { harness::stop(app); }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = event {
                 queue_files(app, urls.into_iter().filter_map(|url| url.to_file_path().ok()));

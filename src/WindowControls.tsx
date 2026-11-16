@@ -24,9 +24,9 @@ export default function WindowControls({ onError }: { onError(message: string, e
     try { await getCurrentWindow()[action](); }
     catch (error) { onError(tf`窗口操作失败：${String(error)}`, true); }
   };
-  return <div className="window-controls" role="group" aria-label={t('窗口控制')}>
-    <button aria-label={t('最小化窗口')} title={t('最小化窗口')} onClick={() => void run('minimize')}><Minus size={15} /></button>
-    <button aria-label={maximized ? t('还原窗口') : t('最大化窗口')} title={maximized ? t('还原窗口') : t('最大化窗口')} onClick={() => void run('toggleMaximize')}>{maximized ? <Copy size={13} /> : <Square size={13} />}</button>
-    <button className="window-close" aria-label={t('关闭窗口')} title={t('关闭窗口')} onClick={() => void run('close')}><X size={17} /></button>
+  return <div className="window-controls" role="group" aria-label={t('窗口控制')} data-tauri-drag-region>
+    <button aria-label={t('最小化窗口')} title={t('最小化窗口')} onClick={() => void run('minimize')}><Minus size={15} strokeWidth={1.75} /></button>
+    <button aria-label={maximized ? t('还原窗口') : t('最大化窗口')} title={maximized ? t('还原窗口') : t('最大化窗口')} onClick={() => void run('toggleMaximize')}>{maximized ? <Copy size={12} strokeWidth={1.75} /> : <Square size={12} strokeWidth={1.75} />}</button>
+    <button className="window-close" aria-label={t('关闭窗口')} title={t('关闭窗口')} onClick={() => void run('close')}><X size={15} strokeWidth={1.75} /></button>
   </div>;
 }
