@@ -11,7 +11,6 @@ if (process.env.CARGO_HOME) {
   process.env[key] = join(process.env.CARGO_HOME, 'bin') + (process.platform === 'win32' ? ';' : ':') + (process.env[key] || '');
 }
 const require = createRequire(import.meta.url);
-if (process.platform === 'win32') await import('./prepare-harness.mjs');
 const cli = require.resolve('@tauri-apps/cli/tauri.js');
 const child = spawn(process.execPath, [cli, ...process.argv.slice(2)], { stdio: 'inherit', env: process.env });
 child.on('error', error => { console.error(error.message); process.exitCode = 1; });

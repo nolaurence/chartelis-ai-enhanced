@@ -1,12 +1,14 @@
 # Chartelis
 
-### AI 助手
+### AI 助手（系统 Codex CLI）
 
-- 顶栏星光按钮打开助手，点「管理 API → 添加 API」填写配置名称、API 地址、模型 ID 和 API Key。支持兼容 OpenAI Chat Completions 的接口，基础地址（如 `https://api.example.com/v1`）及完整 `/chat/completions` 地址均可；本机服务支持 `http://localhost:端口/v1`。尚未接入 Anthropic Messages 或 Responses 专用协议。
-- 最多保存 30 组配置，面板顶部下拉菜单快捷切换；配置及当前选择重启后保留。每组 API 的对话互相独立，对话仅保留在本次应用运行中。
-- 桌面版通过原生 HTTP 客户端发起请求，API Key 存入 Windows 凭据管理器 / macOS 钥匙串，不写入工作区或配置 JSON。浏览器预览仅将密钥保留在当前标签页的 sessionStorage 中，且接口需支持 CORS。
-- 支持流式回复、停止生成、失败重试、复制 Markdown、标题、列表、表格、代码块与 LaTeX 公式。Enter 发送、Shift+Enter 换行；可手动引用选区。只有发送的问题、手动引用内容及该 API 当前对话会提交到所选接口，文稿不会自动上传。
-- AI 返回的原始 HTML 不执行，远程图片不自动加载；地址仅允许 HTTPS 或本机 HTTP，请求不跟随重定向。
+- 顶栏星光按钮打开助手。桌面版像 t3code 一样直接调用系统里安装的 Codex CLI（`codex app-server`，stdio JSON-RPC），**不再内置任何运行时**；工作区跟随打开的文件夹。
+- 未安装 Codex 时面板给出安装指引（`npm install -g @openai/codex` 或官方安装脚本），需要 0.156.0 或更高版本；未登录时引导在终端运行 `codex login`。凭据与对话历史由 Codex 自己管理（`~/.codex`），Chartelis 不读取也不保存密钥。
+- 对话界面由 Chartelis 渲染：流式 Markdown 回复、思考过程、命令执行与输出、文件修改清单、网页搜索、计划与上下文用量；工具审批卡片支持批准 / 本会话批准 / 拒绝 / 拒绝并停止。
+- 每个文件夹记住模型、审批策略（仅自动批准可信操作 / 按需询问 / 从不询问）与沙箱（只读 / 可写工作区 / 完全访问），从下一个回合生效；默认按需询问 + 可写工作区。
+- 历史对话持久化在 Codex 自己的会话目录；面板可新建对话、切换历史对话，回到文件夹时自动继续最近一次对话。部分 Codex 版本（如 0.167.x）的分页历史接口尚未实现，此时自动回退读取会话 rollout 文件渲染历史。
+- 助手操作的是**已保存的文件**；修改后可用文件夹旁的刷新按钮重新加载文稿。隐藏助手不会中断进行中的工作；切换/关闭文件夹或退出应用会结束 Codex 进程（Windows 上连同其子进程）。
+- 浏览器预览不运行 Codex，仅显示桌面版引导。
 
 留白之间，自在书写。基于 **Tauri 2 + React + TypeScript + Milkdown + Motion** 的 Windows / macOS Markdown 编辑器原型。
 
@@ -60,7 +62,7 @@
 
 ## 开发
 
-推荐 Node.js 24、pnpm（版本见 package.json）、Rust stable。
+推荐 Node.js 24、pnpm（版本见 package.json）、Rust stable。AI 助手另外需要系统里安装 Codex CLI 0.156.0+（`npm install -g @openai/codex`，或官方安装脚本），并完成 `codex login`；编辑器本身不依赖 Node 运行时打包。
 
 Windows 需要 Visual Studio C++ Build Tools / Windows SDK 和 WebView2。macOS 需要 Xcode Command Line Tools。详细要求见 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)。
 
@@ -86,9 +88,12 @@ pnpm dev
 ```sh
 pnpm test
 pnpm build
+pnpm test:codex:runtime            # 真实 Codex 冒烟：握手/线程/历史/模型目录，不调用模型
 pnpm desktop:build --bundles nsis  # Windows
 pnpm desktop:build --bundles dmg   # macOS，需在 Mac 上执行
 ```
+
+`pnpm test:codex:runtime` 使用隔离的临时 CODEX_HOME，不触碰真实登录与历史；机器上没有 codex 时自动跳过。Rust 侧另有 `cargo test --manifest-path src-tauri/Cargo.toml --lib`。
 
 启动开发服务器后，可运行 `node e2e/verify-toolbar-ui.mjs`，验证工具栏预览与真实选区一致、右键格式操作保留选区、导出入口及顶栏显示偏好恢复。测试使用独立浏览器上下文，不修改正在使用的工作区。
 
@@ -104,6 +109,10 @@ Windows 输出位于 `src-tauri/target/release/bundle/nsis/`。
 
 ```text
 src/App.tsx              文稿状态、布局、快捷键、关闭保护
+src/AIAssistant.tsx      Codex 助手面板：对话、审批、线程、设置与引导
+src/codex-client.ts      app-server 协议封装、历史加载与偏好
+src/codex-items.ts       实时条目与 rollout 历史的规范化
+src-tauri/src/codex.rs   系统 codex 发现、进程管理与 JSONL 传输
 src/Editor.tsx           Milkdown 生命周期、选区工具栏、大纲
 src/SourceEditor.tsx     CodeMirror 源码编辑、选区与历史
 src/DocumentSession.tsx  每篇文稿的双视图、模式同步、位置恢复
