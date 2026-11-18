@@ -12,7 +12,7 @@ export interface CodexThread {
   model?: string; status?: { type: string; activeFlags?: string[] };
 }
 
-export interface CodexModel { model: string; displayName?: string; description?: string; isDefault?: boolean; hidden?: boolean }
+export interface CodexModel { model: string; displayName?: string; description?: string; isDefault?: boolean; hidden?: boolean; defaultReasoningEffort?: string | null; supportedReasoningEfforts?: { effort: string }[] }
 
 export interface CodexAccount { type: string; email?: string | null; planType?: string }
 
@@ -25,7 +25,7 @@ export interface ApprovalRequest { id: number | string; method: string; params: 
 
 export type ApprovalPolicy = 'untrusted' | 'on-request' | 'never';
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
-export interface ThreadSettings { model?: string; approvalPolicy: ApprovalPolicy; sandbox: SandboxMode }
+export interface ThreadSettings { model?: string; effort?: string; approvalPolicy: ApprovalPolicy; sandbox: SandboxMode }
 export const defaultThreadSettings: ThreadSettings = { approvalPolicy: 'on-request', sandbox: 'workspace-write' };
 
 export const codex = {
@@ -69,6 +69,7 @@ export const resumeThread = (threadId: string, settings: ThreadSettings) =>
 export const sendTurn = (threadId: string, text: string, settings: ThreadSettings) =>
   codex.request<{ turn: { id: string } }>('turn/start', {
     threadId, input: [{ type: 'text', text }], summary: 'detailed',
+    ...(settings.effort ? { effort: settings.effort } : {}),
     approvalPolicy: settings.approvalPolicy, approvalsReviewer: 'user',
     sandboxPolicy: sandboxPolicy(settings.sandbox),
     ...(settings.model ? { model: settings.model } : {}),
@@ -133,7 +134,11 @@ export function loadThreadSettings(directory: string): ThreadSettings {
     if (saved && typeof saved === 'object') {
       const approvalPolicy: ApprovalPolicy = ['untrusted', 'on-request', 'never'].includes(saved.approvalPolicy) ? saved.approvalPolicy : defaultThreadSettings.approvalPolicy;
       const sandbox: SandboxMode = ['read-only', 'workspace-write', 'danger-full-access'].includes(saved.sandbox) ? saved.sandbox : defaultThreadSettings.sandbox;
-      return { model: typeof saved.model === 'string' && saved.model ? saved.model : undefined, approvalPolicy, sandbox };
+      return {
+        model: typeof saved.model === 'string' && saved.model ? saved.model : undefined,
+        effort: typeof saved.effort === 'string' && saved.effort ? saved.effort : undefined,
+        approvalPolicy, sandbox,
+      };
     }
   } catch { /* Corrupt preference falls back to defaults. */ }
   return { ...defaultThreadSettings };

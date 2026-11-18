@@ -487,6 +487,11 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
     if (next) return 'next';
     return undefined;
   };
+  // Model picker: search results, the highlighted model, and its effort levels.
+  const visibleModels = models.filter(model => !modelQuery || (model.displayName || model.model).toLowerCase().includes(modelQuery.toLowerCase()));
+  const activeModel = models.find(model => model.model === settings.model) ?? models.find(model => model.isDefault) ?? models[0];
+  const efforts = activeModel?.supportedReasoningEfforts?.map(entry => entry.effort).filter(Boolean) ?? [];
+  const defaultEffort = activeModel?.defaultReasoningEffort ?? null;
 
   return <aside id="ai-assistant" className="ai-panel" aria-label={t('AI 助手')} hidden={!open} data-tauri-drag-region={isTauri() ? true : undefined}>
     <div className="ai-heading"><span><Sparkles size={17} />{t('AI 助手')}</span><div>
@@ -545,21 +550,42 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
                         {notice && <div className="ai-notice" role="status">{notice}</div>}
                       </div>
                       <div className="ai-composer-lane">
-                        {openMenu === 'model' && <div className="ai-menu" role="dialog" aria-label={t('选择模型')}>
-                          <div className="ai-menu-head">{t('模型')}{status?.version ? <span className="ai-menu-meta">{status.version}</span> : null}</div>
-                          <div className="ai-menu-search"><Search size={13} /><input autoFocus value={modelQuery} placeholder={t('搜索模型…')} aria-label={t('搜索模型')} onChange={event => setModelQuery(event.target.value)} /></div>
-                          <div className="ai-menu-list">
-                            <button className={`ai-menu-item ${!settings.model ? 'is-selected' : ''}`} onClick={() => { updateSettings({ model: undefined }); setOpenMenu(''); }}>
-                              <span className="ai-menu-check">{!settings.model ? <Check size={14} /> : null}</span>
-                              <span className="ai-menu-name">{t('默认（Codex 选择）')}</span>
-                            </button>
-                            {models.filter(model => !modelQuery || (model.displayName || model.model).toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={model.model} className={`ai-menu-item ${settings.model === model.model ? 'is-selected' : ''}`} onClick={() => { updateSettings({ model: model.model }); setOpenMenu(''); }}>
-                              <span className="ai-menu-check">{settings.model === model.model ? <Check size={14} /> : null}</span>
-                              <span className="ai-menu-body"><span className="ai-menu-name">{model.displayName || model.model}{model.isDefault ? <em className="ai-menu-tag">{t('默认')}</em> : null}</span>{model.description && <span className="ai-menu-desc">{model.description}</span>}</span>
-                            </button>)}
-                            {!models.length && <p className="ai-menu-empty">{t('没有可用模型')}</p>}
+                        {openMenu === 'model' && <div className="ai-picker" role="dialog" aria-label={t('选择模型')}>
+                          <div className="ai-picker-body">
+                          <div className="ai-picker-panel">
+                            <div className="ai-picker-search">
+                              <Search size={16} />
+                              <input autoFocus value={modelQuery} placeholder={t('搜索模型…')} aria-label={t('搜索模型')} onChange={event => setModelQuery(event.target.value)} />
+                            </div>
+                            <div className="ai-picker-rows">
+                              {!modelQuery && <button className={`ai-picker-row ${!settings.model ? 'is-selected' : ''}`} onClick={() => { updateSettings({ model: undefined, effort: undefined }); setOpenMenu(''); }}>
+                                <span className="ai-picker-check">{!settings.model ? <Check size={14} /> : null}</span>
+                                <span className="ai-picker-name">{t('默认（Codex 选择）')}</span>
+                              </button>}
+                              {visibleModels.map(model => <button key={model.model} className={`ai-picker-row ${settings.model === model.model ? 'is-selected' : ''}`} onClick={() => { updateSettings({ model: model.model, effort: undefined }); }}>
+                                <span className="ai-picker-check">{settings.model === model.model ? <Check size={14} /> : null}</span>
+                                <span className="ai-picker-name">{model.displayName || model.model}</span>
+                                {model.isDefault && !settings.model ? <span className="ai-picker-default">{t('默认')}</span> : null}
+                              </button>)}
+                              {!visibleModels.length && <p className="ai-picker-empty">{t('没有匹配的模型')}</p>}
+                            </div>
                           </div>
-                          <div className="ai-menu-foot">{account?.email || (account?.type === 'apiKey' ? t('API Key 登录') : t('未登录'))}</div>
+                          <div className="ai-picker-column">
+                            <div className="ai-picker-column-head"><span>{t('推理强度')}</span><span className="ai-picker-column-model">{activeModel?.displayName || activeModel?.model || t('默认（Codex 选择）')}</span></div>
+                            <div className="ai-picker-column-rows">
+                              {efforts.length ? efforts.map(level => <button key={level} className={`ai-picker-row ${settings.effort === level ? 'is-selected' : ''}`} onClick={() => updateSettings({ effort: level })}>
+                                <span className="ai-picker-name">{level}</span>
+                                {settings.effort === level ? <Check size={14} /> : level === defaultEffort ? <span className="ai-picker-default">{t('默认')}</span> : null}
+                              </button>) : <p className="ai-picker-empty">{t('该模型没有可选的推理强度')}</p>}
+                            </div>
+                          </div>
+                          </div>
+                          <div className="ai-picker-footer">
+                            <span>{t('权限')}</span>
+                            <button onClick={() => setOpenMenu('approval')}>
+                              <Shield size={14} />{t(approvalShort[settings.approvalPolicy])}<ChevronDown size={12} />
+                            </button>
+                          </div>
                         </div>}
                         {openMenu === 'approval' && <div className="ai-menu" role="dialog" aria-label={t('审批策略')}>
                           <div className="ai-menu-head">{t('审批策略')}</div>
