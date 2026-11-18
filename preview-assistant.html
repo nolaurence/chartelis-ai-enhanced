@@ -48,10 +48,30 @@
     ] };
     window.isTauri = true;
     const callbacks = new Map();
+    let nextCallbackId = 1;
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
     window.__TAURI_INTERNALS__ = {
       invoke: async (command, args = {}) => {
-        if (command === 'plugin:event|listen') return 1;
-        if (command === 'plugin:event|unlisten') return;
+        if (command === 'plugin:event|listen') {
+          if (args.event === 'codex-event') setTimeout(() => {
+            const payload = {
+              type: 'notification', method: 'configWarning',
+              params: {
+                summary: 'Codex is ignoring 3 unrecognized configuration settings. Check for typos or deprecated settings.\n'
+                  + 'user (~/.codex/config.toml): `disable_response_storage` is ignored.\n'
+                  + 'user (~/.codex/config.toml): `network_access` is ignored.\n'
+                  + 'user (~/.codex/config.toml): `windows_wsl_setup_acknowledged` is ignored.',
+                details: null, path: '~/.codex/config.toml',
+              },
+            };
+            callbacks.get(args.handler)?.({ event: args.event, id: args.handler, payload });
+          }, 0);
+          return args.handler;
+        }
+        if (command === 'plugin:event|unlisten') {
+          callbacks.delete(args.eventId);
+          return;
+        }
         if (command === 'codex_status') return { installed: true, supported: true, path: 'codex', version: 'codex-cli 0.170.0' };
         if (command === 'codex_start' || command === 'codex_stop') return;
         if (command === 'codex_request') {
@@ -66,7 +86,11 @@
         }
         return undefined;
       },
-      transformCallback: (callback) => { const id = callbacks.size + 1; callbacks.set(id, callback); return id; },
+      transformCallback: (callback) => {
+        const id = nextCallbackId++;
+        callbacks.set(id, callback);
+        return id;
+      },
       unregisterCallback: (id) => { callbacks.delete(id); },
       convertFileSrc: path => path,
       metadata: {},

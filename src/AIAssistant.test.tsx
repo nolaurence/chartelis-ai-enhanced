@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AIAssistant from './AIAssistant';
+import { loadThreadSettings } from './codex-client';
 
 const state = vi.hoisted(() => ({
   invoke: vi.fn(async (_command: string, _args?: any): Promise<any> => undefined),
@@ -19,7 +20,10 @@ function requestResult(method: string, params: any): any {
   switch (method) {
     case 'account/read': return { account: { type: 'apiKey' }, requiresOpenaiAuth: true };
     case 'thread/list': return { data: [] };
-    case 'model/list': return { data: [{ model: 'gpt-test', isDefault: true }] };
+    case 'model/list': return { data: [
+      { model: 'gpt-test', isDefault: true },
+      { model: 'gpt-test-alt', supportedReasoningEfforts: [{ effort: 'high' }] },
+    ] };
     case 'thread/start': return { thread: { id: 'thread-1', cwd: params.cwd, historyMode: 'paginated' } };
     case 'turn/start': return { turn: { id: 'turn-1' } };
     case 'thread/resume': return { thread: { id: params.threadId, historyMode: 'paginated' } };
@@ -101,6 +105,36 @@ describe('codex assistant lifecycle', () => {
 });
 
 describe('codex conversation', () => {
+  it('keeps only the model shortcut and opens both permission settings from the picker', async () => {
+    const directory = 'F:/menu-interaction';
+    await show(true, directory);
+    const button = (label: string, container: ParentNode = element) =>
+      Array.from(container.querySelectorAll('button')).find(control => (control.getAttribute('aria-label') ?? control.textContent?.trim()) === label)!;
+    const click = async (control: HTMLButtonElement) => {
+      await act(async () => { control.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })); });
+      await act(async () => { control.click(); });
+    };
+    const picker = () => element.querySelector('[role="dialog"][aria-label="选择模型"]')!;
+
+    const modelShortcut = button('默认模型');
+    expect([...element.querySelectorAll('.ai-composer-controls button')]).toEqual([modelShortcut]);
+    await click(modelShortcut);
+    await click(button('gpt-test-alt', picker()));
+    await click(button('high', picker()));
+    await click(button('权限', picker()));
+
+    const permissions = element.querySelector('[role="dialog"][aria-label="权限"]')!;
+    await click(button('仅可信', permissions));
+    await click(button('只读', permissions));
+    expect(loadThreadSettings(directory)).toEqual({ model: 'gpt-test-alt', effort: 'high', approvalPolicy: 'untrusted', sandbox: 'read-only' });
+
+    const settings = button('助手设置');
+    await click(settings);
+    expect(picker()).toBeTruthy();
+    await click(settings);
+    expect(picker()).toBeNull();
+  });
+
   it('sends a turn, streams the reply, and answers approvals', async () => {
     await show(true, 'F:/project-a');
     const composer = element.querySelector('textarea');

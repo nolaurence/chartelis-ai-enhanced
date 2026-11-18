@@ -75,6 +75,7 @@
   "只能读取文件，不能写入或执行命令。": "Can read files but not write or run commands.",
   "可以读写当前文件夹；执行命令需经审批。": "Can read and write the current folder; commands need approval.",
   "可以读写整个磁盘并执行命令，没有沙箱限制。": "Can read and write the whole disk and run commands, with no sandbox.",
+  "详情": "Details",
   "选择模型": "Choose a model",
   "搜索模型…": "Search models…",
   "搜索模型": "Search models",
