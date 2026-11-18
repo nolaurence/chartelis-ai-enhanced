@@ -81,6 +81,8 @@ pnpm dev
 
 访问 http://127.0.0.1:1420 。支持 File System Access API 的浏览器可以原地保存；其他浏览器使用文件选择和下载副本。下载副本不会将文稿标成已保存，恢复草稿会继续保留。
 
+调试助手对话界面（不启动桌面版）：`pnpm dev` 后访问 http://127.0.0.1:1420/preview-assistant.html?theme=light （可用主题 light/dark/sage/ocean/rose/midnight）。该页面用假数据渲染真实的助手组件与样式，仅用于开发调试。
+
 本机的 `.env.local` 配置复用了已有 Rust 安装，它已被 gitignore 排除。其他机器使用正常 PATH 中的 Rust 即可；非标准安装也可在该文件中指定 `CARGO_HOME`、`RUSTUP_HOME`。启动器位于 `scripts/desktop.mjs`，不修改系统环境变量。
 
 ## 验证与打包

@@ -1,0 +1,82 @@
+<!doctype html>
+<!--
+  Dev-only assistant preview. Renders the real AIAssistant component with real
+  CSS and a mocked Tauri bridge, so the chat UI can be iterated on without
+  launching the desktop app:
+      pnpm dev
+      open http://127.0.0.1:1420/preview-assistant.html?theme=light
+  Themes: light, dark, sage, ocean, rose, midnight. Not part of any build.
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Assistant preview</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+  <link rel="stylesheet" href="/src/ai.css" />
+  <link rel="stylesheet" href="/src/editor.css" />
+  <style>
+    body { margin:0; background:var(--paper); }
+    #root { height:100vh; display:flex; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module">
+    import { createElement } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import AIAssistant from '/src/AIAssistant.tsx';
+
+    // Stub the Tauri bridge so the real components run in a plain browser.
+    const thread = {
+      id: '01a1df8a-preview', name: null, preview: '帮我把开头的引言润色一下',
+      cwd: 'F:\\projects\\Chartelis', updatedAt: Math.floor(Date.now() / 1000) - 3600,
+      historyMode: 'legacy', path: null, model: 'gpt-6.1-sol', status: { type: 'idle' },
+    };
+    const turns = [[
+      { id: 'u1', type: 'userMessage', content: [{ type: 'text', text: '你好' }] },
+      { id: 'u2', type: 'userMessage', content: [{ type: 'text', text: '帮我把开头的引言润色一下，保留我原来的语气' }] },
+      { id: 'r1', type: 'reasoning', summary: ['先读一遍引言，抓住原来的语气：克制、短句、留白。', '润色时只调整措辞，不改结构。'] },
+      { id: 'c1', type: 'commandExecution', command: 'sed -n 1,12p README.md', cwd: 'F:\\projects\\Chartelis', status: 'completed', exitCode: 0, aggregatedOutput: '# Chartelis\n\n留白之间，自在书写。' },
+      { id: 'f1', type: 'fileChange', status: 'completed', changes: [{ path: 'README.md', kind: { type: 'update' }, diff: '@@ -1,4 +1,4 @@\n-留白之间，自在书写。\n+在留白之间，自在书写。' }] },
+      { id: 'w1', type: 'webSearch', query: 'Markdown editor typography best practices' },
+      { id: 'a1', type: 'agentMessage', text: '好的，这是润色后的版本：\n\n## 开头\n\n> 在留白之间，自在书写。\n\n改动只有一处：把「留白之间，自在书写。」改成「在留白之间，自在书写。」，节奏更稳，也更接近你原来的语气。\n\n| 位置 | 原文 | 改后 |\n| --- | --- | --- |\n| 副标题 | 留白之间，自在书写。 | 在留白之间，自在书写。 |\n\n其余部分没有动。' },
+    ]];
+    const models = { data: [
+      { model: 'gpt-6.1-sol', displayName: 'gpt-6.1-sol', isDefault: true, description: '均衡的通用模型，适合日常写作与代码。' },
+      { model: 'gpt-6-astra', displayName: 'gpt-6-astra', description: '更快的轻量模型，响应迅速。' },
+      { model: 'gpt-5.6-sol', displayName: 'gpt-5.6-sol', description: '上一代主力模型，稳定可靠。' },
+    ] };
+    window.isTauri = true;
+    const callbacks = new Map();
+    window.__TAURI_INTERNALS__ = {
+      invoke: async (command, args = {}) => {
+        if (command === 'plugin:event|listen') return 1;
+        if (command === 'plugin:event|unlisten') return;
+        if (command === 'codex_status') return { installed: true, supported: true, path: 'codex', version: 'codex-cli 0.170.0' };
+        if (command === 'codex_start' || command === 'codex_stop') return;
+        if (command === 'codex_request') {
+          switch (args.method) {
+            case 'account/read': return { account: { type: 'apiKey' }, requiresOpenaiAuth: true };
+            case 'thread/list': return { data: [thread] };
+            case 'model/list': return models;
+            case 'thread/resume': return { thread };
+            case 'thread/read': return { thread: { ...thread, turns: turns.map(items => ({ id: 't1', items })) } };
+            default: return {};
+          }
+        }
+        return undefined;
+      },
+      transformCallback: (callback) => { const id = callbacks.size + 1; callbacks.set(id, callback); return id; },
+      unregisterCallback: (id) => { callbacks.delete(id); },
+      convertFileSrc: path => path,
+      metadata: {},
+    };
+    document.documentElement.dataset.theme = new URLSearchParams(location.search).get('theme') || 'light';
+    const root = createRoot(document.getElementById('root'));
+    root.render(createElement(AIAssistant, {
+      open: true, directory: 'F:\\projects\\Chartelis', canReload: true,
+      onClose() {}, onChooseFolder() {}, onReload() {},
+    }));
+  </script>
+</body>
+</html>

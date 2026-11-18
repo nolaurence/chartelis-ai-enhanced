@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import type { UnlistenFn } from '@tauri-apps/api/event';
-import { Check, ChevronDown, Copy, FileText, History, LoaderCircle, MessageSquarePlus, RefreshCw, Send, Settings2, Sparkles, Square, Terminal, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, Cpu, FileText, History, LoaderCircle, MessageSquarePlus, RefreshCw, Search, Settings2, Shield, Sparkles, Square, Terminal, X } from 'lucide-react';
 import { t, useLanguage } from './i18n';
 import { renderAIMarkdown } from './ai-markdown';
 import {
@@ -51,11 +51,28 @@ const approvalLabels: Record<string, string> = {
   'on-request': '按需询问',
   never: '从不询问',
 };
+const approvalShort: Record<string, string> = { untrusted: '仅可信', 'on-request': '按需询问', never: '从不询问' };
+const approvalHint: Record<string, string> = {
+  untrusted: '只自动批准被判定为可信的操作，其余都询问。',
+  'on-request': '需要时询问；批准的同类操作在本会话内不再询问。',
+  never: '不询问，直接执行；请确认你信任这个工程里的指令。',
+};
 const sandboxLabels: Record<string, string> = {
   'read-only': '只读',
   'workspace-write': '可写工作区',
   'danger-full-access': '完全访问',
 };
+const sandboxShort: Record<string, string> = { 'read-only': '只读', 'workspace-write': '可写', 'danger-full-access': '完全' };
+const sandboxHint: Record<string, string> = {
+  'read-only': '只能读取文件，不能写入或执行命令。',
+  'workspace-write': '可以读写当前文件夹；执行命令需经审批。',
+  'danger-full-access': '可以读写整个磁盘并执行命令，没有沙箱限制。',
+};
+
+/** A composer footer control: t3code's ComposerControl pill. */
+function Pill({ expanded, icon, label, onClick }: { expanded: boolean; icon: React.ReactNode; label: string; onClick(): void }) {
+  return <button className="ai-pill" aria-expanded={expanded} title={label} onClick={onClick}>{icon}<span>{label}</span></button>;
+}
 
 function ApprovalCard({ approval, onDecide, onAnswer }: {
   approval: ApprovalRequest;
@@ -96,10 +113,10 @@ function ApprovalCard({ approval, onDecide, onAnswer }: {
   </div>;
 }
 
-function ItemView({ item }: { item: DisplayItem }) {
+function ItemView({ item, grouped }: { item: DisplayItem; grouped?: 'previous' | 'next' | 'both' }) {
   switch (item.kind) {
     case 'user':
-      return <div className="ai-item ai-user"><div className="ai-bubble">{item.text}</div></div>;
+      return <div className={`ai-item ai-user ${grouped === 'next' || grouped === 'both' ? 'is-grouped' : ''} ${grouped === 'previous' || grouped === 'both' ? 'is-grouped-next' : ''}`}><div className="ai-bubble">{item.text}</div></div>;
     case 'agent':
       return <div className="ai-item ai-agent"><div className="ai-md" dangerouslySetInnerHTML={{ __html: renderAIMarkdown(item.text) }} /></div>;
     case 'reasoning':
@@ -152,8 +169,10 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
   const [usage, setUsage] = useState<{ total: number; window?: number } | null>(null);
   const [models, setModels] = useState<CodexModel[]>([]);
   const [settings, setSettings] = useState<ThreadSettings>({ ...defaultThreadSettings });
-  const [showSettings, setShowSettings] = useState(false);
   const [showThreads, setShowThreads] = useState(false);
+  // Which composer footer menu is open: model / approval / sandbox.
+  const [openMenu, setOpenMenu] = useState<'' | 'model' | 'approval' | 'sandbox'>('');
+  const [modelQuery, setModelQuery] = useState('');
   const [draft, setDraft] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -366,6 +385,20 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
     if (scroller && stickToBottom.current) scroller.scrollTop = scroller.scrollHeight;
   }, [items, approvals, busy, plan, loadingHistory]);
 
+  // Footer menus close on Escape or a click outside them, like t3code's popups.
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.('.ai-menu, .ai-pill')) return;
+      setOpenMenu('');
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpenMenu(''); };
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', close, true); document.removeEventListener('keydown', escape); };
+  }, [openMenu]);
+
   const ready = phase === 'ready';
 
   const updateSettings = (patch: Partial<ThreadSettings>) => {
@@ -445,12 +478,21 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
   };
 
   const threadTitle = thread?.name || thread?.preview?.split('\n')[0]?.slice(0, 60) || t('新建对话');
+  // Consecutive user messages read as one block: square the joining corners.
+  const groupedAt = (index: number): 'previous' | 'next' | 'both' | undefined => {
+    const previous = items[index - 1]?.kind === 'user';
+    const next = items[index + 1]?.kind === 'user';
+    if (previous && next) return 'both';
+    if (previous) return 'previous';
+    if (next) return 'next';
+    return undefined;
+  };
 
   return <aside id="ai-assistant" className="ai-panel" aria-label={t('AI 助手')} hidden={!open} data-tauri-drag-region={isTauri() ? true : undefined}>
     <div className="ai-heading"><span><Sparkles size={17} />{t('AI 助手')}</span><div>
       <button className="icon-button" disabled={!ready || busy} title={t('新建对话')} aria-label={t('新建对话')} onClick={newConversation}><MessageSquarePlus size={17} /></button>
-      <button className={`icon-button ${showThreads ? 'is-active' : ''}`} disabled={!ready} title={t('历史对话')} aria-label={t('历史对话')} aria-expanded={showThreads} onClick={() => { setShowThreads(value => !value); setShowSettings(false); }}><History size={16} /></button>
-      <button className={`icon-button ${showSettings ? 'is-active' : ''}`} disabled={!ready} title={t('助手设置')} aria-label={t('助手设置')} aria-expanded={showSettings} onClick={() => { setShowSettings(value => !value); setShowThreads(false); }}><Settings2 size={16} /></button>
+      <button className={`icon-button ${showThreads ? 'is-active' : ''}`} disabled={!ready} title={t('历史对话')} aria-label={t('历史对话')} aria-expanded={showThreads} onClick={() => { setShowThreads(value => !value); setOpenMenu(''); }}><History size={16} /></button>
+      <button className="icon-button" disabled={!ready} title={t('助手设置')} aria-label={t('助手设置')} onClick={() => { setOpenMenu(value => value === 'model' ? '' : 'model'); setModelQuery(''); setShowThreads(false); }}><Settings2 size={16} /></button>
       <button className="icon-button" title={t('关闭 AI 助手')} aria-label={t('关闭 AI 助手')} onClick={onClose}><X size={17} /></button>
     </div></div>
     {directory && <div className="ai-workspace" title={directory}><span>{directory.split(/[\\/]/).filter(Boolean).at(-1) || directory}</span><button disabled={!canReload} title={t('重新加载当前文稿')} aria-label={t('重新加载当前文稿')} onClick={onReload}><RefreshCw size={14} /></button></div>}
@@ -461,21 +503,6 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
         <span className="ai-thread-name">{entry.name || entry.preview?.split('\n')[0]?.slice(0, 60) || t('未命名对话')}</span>
         <span className="ai-thread-time">{relativeTime(entry.updatedAt)}</span>
       </button>) : <p className="ai-popover-empty">{t('这个文件夹还没有历史对话')}</p>}
-    </div>}
-
-    {showSettings && ready && <div className="ai-popover ai-settings">
-      <label>{t('模型')}<select value={settings.model ?? ''} onChange={event => updateSettings({ model: event.target.value || undefined })}>
-        <option value="">{t('默认（Codex 选择）')}</option>
-        {models.map(model => <option key={model.model} value={model.model}>{model.displayName || model.model}{model.isDefault ? ` · ${t('默认')}` : ''}</option>)}
-      </select></label>
-      <label>{t('审批策略')}<select value={settings.approvalPolicy} onChange={event => updateSettings({ approvalPolicy: event.target.value as ThreadSettings['approvalPolicy'] })}>
-        {Object.entries(approvalLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
-      </select></label>
-      <label>{t('沙箱')}<select value={settings.sandbox} onChange={event => updateSettings({ sandbox: event.target.value as ThreadSettings['sandbox'] })}>
-        {Object.entries(sandboxLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
-      </select></label>
-      <p className="ai-settings-note">{t('设置保存在本机，按文件夹记住；从下一个回合生效。')}</p>
-      {status?.version && <p className="ai-settings-meta">{status.version}{account?.email ? ` · ${account.email}` : account?.type === 'apiKey' ? ' · API Key' : ''}</p>}
     </div>}
 
     <div className="ai-body">
@@ -502,7 +529,7 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
                 : phase === 'error' ? <div className="ai-empty" role="alert"><p className="ai-error">{error}</p><button className="primary-button" onClick={() => setRetry(value => value + 1)}>{t('重新连接')}</button></div>
                   : phase === 'checking' || phase === 'starting' || phase === 'idle' ? <div className="ai-empty" role="status"><LoaderCircle className="ai-loading" size={24} /><p>{phase === 'checking' ? t('正在检测 Codex CLI…') : t('正在启动助手…')}</p></div>
                     : <div className="ai-chat">
-                      <button className="ai-thread-bar" onClick={() => { setShowThreads(value => !value); setShowSettings(false); }} aria-expanded={showThreads}>
+                      <button className="ai-thread-bar" onClick={() => { setShowThreads(value => !value); setOpenMenu(''); }} aria-expanded={showThreads}>
                         <span>{threadTitle}</span><ChevronDown size={14} />
                       </button>
                       <div className="ai-messages" ref={scrollRef} onScroll={() => {
@@ -511,25 +538,67 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
                       }}>
                         {loadingHistory && <div className="ai-history-loading" role="status"><LoaderCircle className="ai-loading" size={16} />{t('正在读取历史…')}</div>}
                         {!loadingHistory && !items.length && !busy && <div className="ai-welcome"><Sparkles size={22} /><p>{t('让 Codex 在这个文件夹里帮你读写文稿、整理资料或回答问题。')}</p></div>}
-                        {items.map(item => <ItemView key={item.id} item={item} />)}
+                        {items.map((item, index) => <ItemView key={item.id} item={item} grouped={item.kind === 'user' ? groupedAt(index) : undefined} />)}
                         {plan && plan.length > 0 && <div className="ai-item ai-plan"><div className="ai-tool-title">{t('计划')}</div><ul>{plan.map((step, index) => <li key={index} className={`is-${step.status}`}><span className="ai-plan-mark">{step.status === 'completed' ? '✓' : step.status === 'inProgress' ? '→' : '·'}</span>{step.step}</li>)}</ul></div>}
                         {approvals.map(approval => <ApprovalCard key={String(approval.id)} approval={approval} onDecide={decide} onAnswer={answer} />)}
-                        {busy && !approvals.length && <div className="ai-thinking" role="status"><LoaderCircle className="ai-loading" size={14} />{t('Codex 正在工作…')}</div>}
+                        {busy && !approvals.length && <div className="ai-thinking" role="status"><LoaderCircle className="ai-loading" size={14} /><span>{t('Codex 正在工作…')}</span></div>}
                         {notice && <div className="ai-notice" role="status">{notice}</div>}
                       </div>
-                      <div className="ai-composer">
-                        <textarea ref={composerRef} value={draft} rows={2} placeholder={t('向 Codex 提问…（Enter 发送，Shift+Enter 换行）')} aria-label={t('输入消息')}
-                          onChange={event => setDraft(event.target.value)}
-                          onKeyDown={event => {
-                            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
-                          }} />
-                        {busy
-                          ? <button className="ai-send is-stop" aria-label={t('停止生成')} title={t('停止生成')} onClick={stop}><Square size={15} /></button>
-                          : <button className="ai-send" aria-label={t('发送')} title={t('发送')} disabled={!draft.trim()} onClick={() => void send()}><Send size={15} /></button>}
-                      </div>
-                      <div className="ai-statusline">
-                        <button onClick={() => { setShowSettings(value => !value); setShowThreads(false); }}>{settings.model || t('默认模型')} · {t(approvalLabels[settings.approvalPolicy])} · {t(sandboxLabels[settings.sandbox])}</button>
-                        {usage && <span title={t('上下文用量')}>{usage.window ? `${Math.round(usage.total / 1000)}k / ${Math.round(usage.window / 1000)}k` : `${Math.round(usage.total / 1000)}k tokens`}</span>}
+                      <div className="ai-composer-lane">
+                        {openMenu === 'model' && <div className="ai-menu" role="dialog" aria-label={t('选择模型')}>
+                          <div className="ai-menu-head">{t('模型')}{status?.version ? <span className="ai-menu-meta">{status.version}</span> : null}</div>
+                          <div className="ai-menu-search"><Search size={13} /><input autoFocus value={modelQuery} placeholder={t('搜索模型…')} aria-label={t('搜索模型')} onChange={event => setModelQuery(event.target.value)} /></div>
+                          <div className="ai-menu-list">
+                            <button className={`ai-menu-item ${!settings.model ? 'is-selected' : ''}`} onClick={() => { updateSettings({ model: undefined }); setOpenMenu(''); }}>
+                              <span className="ai-menu-check">{!settings.model ? <Check size={14} /> : null}</span>
+                              <span className="ai-menu-name">{t('默认（Codex 选择）')}</span>
+                            </button>
+                            {models.filter(model => !modelQuery || (model.displayName || model.model).toLowerCase().includes(modelQuery.toLowerCase())).map(model => <button key={model.model} className={`ai-menu-item ${settings.model === model.model ? 'is-selected' : ''}`} onClick={() => { updateSettings({ model: model.model }); setOpenMenu(''); }}>
+                              <span className="ai-menu-check">{settings.model === model.model ? <Check size={14} /> : null}</span>
+                              <span className="ai-menu-body"><span className="ai-menu-name">{model.displayName || model.model}{model.isDefault ? <em className="ai-menu-tag">{t('默认')}</em> : null}</span>{model.description && <span className="ai-menu-desc">{model.description}</span>}</span>
+                            </button>)}
+                            {!models.length && <p className="ai-menu-empty">{t('没有可用模型')}</p>}
+                          </div>
+                          <div className="ai-menu-foot">{account?.email || (account?.type === 'apiKey' ? t('API Key 登录') : t('未登录'))}</div>
+                        </div>}
+                        {openMenu === 'approval' && <div className="ai-menu" role="dialog" aria-label={t('审批策略')}>
+                          <div className="ai-menu-head">{t('审批策略')}</div>
+                          <div className="ai-segments">
+                            {(['untrusted', 'on-request', 'never'] as const).map(value => <button key={value} className={settings.approvalPolicy === value ? 'is-checked' : ''} onClick={() => updateSettings({ approvalPolicy: value })}>{t(approvalShort[value])}</button>)}
+                          </div>
+                          <p className="ai-menu-title">{t(approvalLabels[settings.approvalPolicy])}</p>
+                          <p className="ai-menu-hint">{t(approvalHint[settings.approvalPolicy])}</p>
+                        </div>}
+                        {openMenu === 'sandbox' && <div className="ai-menu" role="dialog" aria-label={t('沙箱')}>
+                          <div className="ai-menu-head">{t('沙箱')}</div>
+                          <div className="ai-segments">
+                            {(['read-only', 'workspace-write', 'danger-full-access'] as const).map(value => <button key={value} className={settings.sandbox === value ? 'is-checked' : ''} onClick={() => updateSettings({ sandbox: value })}>{t(sandboxShort[value])}</button>)}
+                          </div>
+                          <p className="ai-menu-title">{t(sandboxLabels[settings.sandbox])}</p>
+                          <p className="ai-menu-hint">{t(sandboxHint[settings.sandbox])}</p>
+                        </div>}
+                        <div className="ai-composer-surface">
+                          <div className="ai-composer-body">
+                            <textarea ref={composerRef} value={draft} rows={2} placeholder={t('向 Codex 提问…（Enter 发送，Shift+Enter 换行）')} aria-label={t('输入消息')}
+                              onChange={event => setDraft(event.target.value)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+                              }} />
+                          </div>
+                          <div className="ai-composer-footer">
+                            <div className="ai-composer-controls">
+                              <Pill expanded={openMenu === 'model'} icon={<Cpu size={16} />} label={settings.model || t('默认模型')} onClick={() => { setOpenMenu(value => value === 'model' ? '' : 'model'); setModelQuery(''); setShowThreads(false); }} />
+                              <Pill expanded={openMenu === 'approval'} icon={<Shield size={16} />} label={t(approvalShort[settings.approvalPolicy])} onClick={() => { setOpenMenu(value => value === 'approval' ? '' : 'approval'); setShowThreads(false); }} />
+                              <Pill expanded={openMenu === 'sandbox'} icon={<Sparkles size={16} />} label={t(sandboxShort[settings.sandbox])} onClick={() => { setOpenMenu(value => value === 'sandbox' ? '' : 'sandbox'); setShowThreads(false); }} />
+                            </div>
+                            {usage && <span className="ai-usage" title={t('上下文用量')}>{usage.window ? `${Math.round(usage.total / 1000)}k / ${Math.round(usage.window / 1000)}k` : `${Math.round(usage.total / 1000)}k tokens`}</span>}
+                            {busy
+                              ? <button className="ai-send is-stop" aria-label={t('停止生成')} title={t('停止生成')} onClick={stop}><Square size={12} /></button>
+                              : <button className="ai-send" aria-label={t('发送')} title={t('发送')} disabled={!draft.trim()} onClick={() => void send()}>
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3L8 13M8 3L4 7M8 3L12 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                              </button>}
+                          </div>
+                        </div>
                       </div>
                     </div>}
     </div>

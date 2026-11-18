@@ -7,6 +7,12 @@
   --paper: #faf9f6; --sidebar: #f0efea; --text: #363832; --muted: #96978e; --subtle: #b1b0a7;
   --line: #e6e5de; --hover: #e8e7df; --selected: #e5e5dc; --accent: #868765; --accent-soft: #eeeee3;
   --gold: #b09b77; --surface: #fffefa; --shadow: 0 12px 40px #33352815;
+  /* Chat surfaces, derived so every palette stays harmonious. */
+  --message: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --message-foreground: var(--text);
+  --message-action: var(--text);
+  --message-action-foreground: var(--surface);
+  --message-action-hover: color-mix(in srgb, var(--text) 78%, var(--surface));
   --header-height: 64px;
 }
 :root[data-theme='dark'] {
