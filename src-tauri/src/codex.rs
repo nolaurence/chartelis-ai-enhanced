@@ -411,9 +411,29 @@ fn pump(app: tauri::AppHandle, shared: Arc<Shared>, runtime_child_stdout: std::p
     let _ = app.emit(EVENT, json!({"type": "exit", "code": status.and_then(|s| s.code()), "stderr": tail}));
 }
 
+/// npm installs `codex` as a `.cmd` shim that runs node, which spawns the real
+/// binary with CREATE_BREAKAWAY_FROM_JOB — so grandchildren escape our job and
+/// survive an abrupt editor exit. Resolve the native binary inside the same
+/// install and launch it directly; then the Job Object covers the whole tree.
+#[cfg(windows)]
+fn native_beside_shim(shim: &Path) -> Option<PathBuf> {
+    let package = shim.parent()?.join("node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor");
+    for entry in std::fs::read_dir(package).ok()? {
+        let candidate = entry.ok()?.path().join("bin/codex.exe");
+        if candidate.is_file() { return Some(candidate); }
+    }
+    None
+}
+
 fn start(app: tauri::AppHandle, directory: String) -> Result<(), String> {
     let root = normalized_root(&directory)?;
     let launch = discover().ok_or("未找到 Codex CLI。请先安装：npm install -g @openai/codex / Codex CLI not found. Install it first: npm install -g @openai/codex")?;
+    // Prefer the native binary over the npm shim so the job covers everything.
+    let launch = match &launch {
+        #[cfg(windows)]
+        Launch::CmdShim(shim) => native_beside_shim(shim).map(Launch::Direct).unwrap_or(launch),
+        _ => launch,
+    };
     let state = app.state::<CodexState>();
     let mut slot = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(current) = slot.as_mut() {
@@ -644,8 +664,6 @@ mod tests {
         assert!(!version_supported("unexpected output"));
     }
 
-    // npm's shim chain is app -> cmd.exe -> node.exe -> codex.exe, and the
-    // grandchildren break away from our job, so the tree must be walked.
     #[test]
     #[cfg(windows)]
     fn descendants_cover_the_npm_shim_chain() {
@@ -656,5 +674,20 @@ mod tests {
         // A cycle must not hang or repeat.
         let cycle = [(1u32, 2u32), (2, 1)];
         assert_eq!(descendants(1, &cycle), vec![1, 2]);
+    }
+
+    // The npm shim resolves to the native binary so the job covers the tree.
+    #[test]
+    #[cfg(windows)]
+    fn native_binary_resolves_beside_an_npm_shim() {
+        let missing = PathBuf::from("C:\\definitely-missing\\codex.cmd");
+        assert_eq!(native_beside_shim(&missing), None);
+        // This machine's global npm install has one.
+        if let Some(Launch::CmdShim(shim)) = discover() {
+            if let Some(native) = native_beside_shim(&shim) {
+                assert!(native.is_file());
+                assert!(native.to_string_lossy().contains("codex-win32-x64"));
+            }
+        }
     }
 }
