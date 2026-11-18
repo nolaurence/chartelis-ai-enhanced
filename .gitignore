@@ -4,6 +4,8 @@ src-tauri/target/
 src-tauri/gen/
 .tools/
 artifacts/
+.acl-recovery/
+.verify/
 *.local
 .env
 .env.*

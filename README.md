@@ -95,6 +95,8 @@ pnpm desktop:build --bundles dmg   # macOS，需在 Mac 上执行
 
 `pnpm test:codex:runtime` 使用隔离的临时 CODEX_HOME，不触碰真实登录与历史；机器上没有 codex 时自动跳过。Rust 侧另有 `cargo test --manifest-path src-tauri/Cargo.toml --lib`。
 
+桌面全链路验证（真实系统 Codex，不调用模型）：先以 `$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9223'` 启动 `pnpm desktop`，再运行 `node e2e/verify-codex-app.mjs`。它覆盖发现与版本门槛、握手、线程/模型 API、rollout 读取围栏、并发请求、实时事件通道、真实历史渲染、助手面板开合，以及退出时整个 codex 进程树的清理。
+
 启动开发服务器后，可运行 `node e2e/verify-toolbar-ui.mjs`，验证工具栏预览与真实选区一致、右键格式操作保留选区、导出入口及顶栏显示偏好恢复。测试使用独立浏览器上下文，不修改正在使用的工作区。
 
 `node e2e/verify-layout-folders.mjs` 验证紧凑顶栏、字符插入与撤销、文件夹浏览、草稿保护、文稿快速切换及顶栏/底栏的悬浮恢复入口。

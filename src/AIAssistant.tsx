@@ -346,7 +346,9 @@ export default function AIAssistant({ open, directory, canReload, onClose, onCho
           return;
         }
         case 'warning':
+        case 'configWarning':
           if (params?.message) setNotice(String(params.message));
+          else if (params?.summary) setNotice(String(params.summary));
           return;
         case 'account/updated':
           void readAccount().then(auth => setAccount(auth.account)).catch(() => {});

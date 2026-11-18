@@ -47,11 +47,15 @@ struct Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
+        let mut child = self.shared.child.lock().unwrap_or_else(|e| e.into_inner());
+        let pid = child.id();
+        #[cfg(windows)]
+        terminate_tree(pid);
+        #[cfg(not(windows))]
+        { let _ = child.kill(); }
+        let _ = child.wait();
         #[cfg(windows)]
         unsafe { windows_sys::Win32::Foundation::CloseHandle(self.job as _); }
-        let mut child = self.shared.child.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = child.kill();
-        let _ = child.wait();
     }
 }
 
@@ -232,6 +236,58 @@ fn assign_job(child: &Child) -> Result<isize, String> {
         }
         Ok(job as isize)
     }
+}
+
+/// Terminate a process and every descendant, deepest first.
+///
+/// The Windows Job Object alone is not enough here: npm installs `codex` as a
+/// `.cmd` shim whose node launcher spawns the real binary with
+/// CREATE_BREAKAWAY_FROM_JOB, so grandchildren escape the job we assign to the
+/// shim. Snapshot the process table and walk the parent chain instead.
+#[cfg(windows)]
+fn terminate_tree(root: u32) {
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS},
+        System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE},
+    };
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == -1isize as _ { return; }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut tree: Vec<(u32, u32)> = Vec::new();
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                tree.push((entry.th32ProcessID, entry.th32ParentProcessID));
+                if Process32NextW(snapshot, &mut entry) == 0 { break; }
+            }
+        }
+        CloseHandle(snapshot);
+        // Insertion order is breadth-first, so reversing terminates children first.
+        for pid in descendants(root, &tree).iter().rev() {
+            let handle = OpenProcess(PROCESS_TERMINATE, 0, *pid);
+            if !handle.is_null() {
+                TerminateProcess(handle, 1);
+                CloseHandle(handle);
+            }
+        }
+    }
+}
+
+/// Collect `root` and every descendant from a (pid, parent) snapshot.
+/// Insertion order is breadth-first, so reversing terminates children first.
+#[cfg(windows)]
+fn descendants(root: u32, tree: &[(u32, u32)]) -> Vec<u32> {
+    let mut targets = vec![root];
+    loop {
+        let mut grown = false;
+        for (pid, parent) in tree {
+            if targets.contains(parent) && !targets.contains(pid) { targets.push(*pid); grown = true; }
+        }
+        if !grown { break; }
+    }
+    targets
 }
 
 fn version_of(launch: &Launch) -> Option<String> {
@@ -586,5 +642,19 @@ mod tests {
         assert!(!version_supported("codex-cli 0.155.9"));
         assert!(!version_supported("codex-cli 0.149.0"));
         assert!(!version_supported("unexpected output"));
+    }
+
+    // npm's shim chain is app -> cmd.exe -> node.exe -> codex.exe, and the
+    // grandchildren break away from our job, so the tree must be walked.
+    #[test]
+    #[cfg(windows)]
+    fn descendants_cover_the_npm_shim_chain() {
+        let tree = [(100u32, 7u32), (200, 100), (300, 200), (400, 7), (500, 400)];
+        assert_eq!(descendants(100, &tree), vec![100, 200, 300]);
+        assert_eq!(descendants(7, &tree), vec![7, 100, 200, 300, 400, 500]);
+        assert_eq!(descendants(999, &tree), vec![999]);
+        // A cycle must not hang or repeat.
+        let cycle = [(1u32, 2u32), (2, 1)];
+        assert_eq!(descendants(1, &cycle), vec![1, 2]);
     }
 }
